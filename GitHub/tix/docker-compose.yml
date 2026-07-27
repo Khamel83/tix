@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  ticket-sniper:
+    build: .
+    container_name: ticket_sniper
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - SEATGEEK_CLIENT_ID=${SEATGEEK_CLIENT_ID}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - ARGUS_BASE_URL=${ARGUS_BASE_URL}
+      - ARGUS_API_KEY=${ARGUS_API_KEY}
+      - TZ_DISPLAY=${TZ_DISPLAY:-America/Los_Angeles}
+      - TIER2_MAX_REQUESTS_PER_DAY=${TIER2_MAX_REQUESTS_PER_DAY:-600}
+      - GATE_MARGIN=${GATE_MARGIN:-0.15}
+      - DEADMAN_HOURS=${DEADMAN_HOURS:-6}
+      - DATABASE_PATH=/data/tickets.sqlite3
+    volumes:
+      - sniper_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  sniper_data:
+    driver: local
