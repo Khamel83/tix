@@ -34,12 +34,12 @@ def utc_string(value):
     return value.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def add_event(source_event_id, starts_at_utc, status="active"):
+def add_event(source_event_id, starts_at_utc, status="active", source="seatgeek"):
     session = SessionLocal()
     try:
         session.add(
             SourceEvent(
-                source="seatgeek",
+                source=source,
                 source_event_id=source_event_id,
                 title=f"Event {source_event_id}",
                 venue_name="Test Venue",
@@ -153,6 +153,11 @@ async def test_reconcile_schedules_upcoming_events_with_dynamic_intervals():
     add_event("near-term", now + timedelta(days=2))
     add_event("past", now - timedelta(hours=1))
     add_event("inactive", now + timedelta(hours=12), status="cancelled")
+    add_event(
+        "unsupported",
+        now + timedelta(hours=12),
+        source="stubhub",
+    )
 
     scheduler = FakeScheduler()
     result = await reconcile_event_poll_jobs(scheduler, now)
@@ -166,6 +171,7 @@ async def test_reconcile_schedules_upcoming_events_with_dynamic_intervals():
     assert near_term_job.args == ["seatgeek", "near-term", 2]
     assert scheduler.get_job(event_poll_job_id("seatgeek", "past")) is None
     assert scheduler.get_job(event_poll_job_id("seatgeek", "inactive")) is None
+    assert scheduler.get_job(event_poll_job_id("stubhub", "unsupported")) is None
 
 
 @pytest.mark.asyncio

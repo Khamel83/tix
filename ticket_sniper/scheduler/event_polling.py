@@ -81,7 +81,10 @@ async def load_poll_candidates(now: Optional[datetime] = None) -> List[PollCandi
     def _load(session):
         events = (
             session.query(SourceEvent)
-            .filter(SourceEvent.status == "active")
+            .filter(
+                SourceEvent.status == "active",
+                SourceEvent.source == "seatgeek",
+            )
             .order_by(SourceEvent.starts_at_utc.asc())
             .all()
         )
