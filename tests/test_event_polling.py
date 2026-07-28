@@ -10,12 +10,14 @@ os.environ.setdefault("DATABASE_PATH", tempfile.NamedTemporaryFile(delete=False)
 
 import pytest
 
-from ticket_sniper.db.models import Base, SourceEvent
+from ticket_sniper.db.models import Base, EventPriceSnapshot, PollRun, SourceEvent
 from ticket_sniper.db.session import SessionLocal, engine
+from ticket_sniper.discovery.seatgeek import SeatGeekDiscovery
 from ticket_sniper.scheduler.event_polling import (
     EVENT_POLL_JOB_PREFIX,
     event_poll_job_id,
     poll_cadence_for_event,
+    poll_event_ticket_data,
     reconcile_event_poll_jobs,
 )
 
@@ -103,6 +105,45 @@ def test_poll_cadence_increases_as_event_approaches():
     assert near_term.interval_seconds > final_day.interval_seconds
     assert near_term.tier == 2
     assert final_day.tier == 2
+
+
+@pytest.mark.asyncio
+async def test_event_poll_fetches_and_persists_live_seatgeek_stats(monkeypatch):
+    async def fake_fetch_event(self, source_event_id):
+        assert source_event_id == "near-term"
+        return {
+            "stats": {
+                "lowest_price": 81,
+                "average_price": 127,
+                "highest_price": 412,
+                "listing_count": 93,
+                "visible_listing_count": 88,
+            }
+        }
+
+    monkeypatch.setattr(
+        SeatGeekDiscovery,
+        "fetch_event",
+        fake_fetch_event,
+        raising=False,
+    )
+
+    await poll_event_ticket_data("seatgeek", "near-term", tier=2)
+
+    session = SessionLocal()
+    try:
+        snapshot = session.query(EventPriceSnapshot).one()
+        poll_run = session.query(PollRun).one()
+        assert snapshot.source_event_id == "near-term"
+        assert snapshot.lowest_price == 81
+        assert snapshot.listing_count == 93
+        assert snapshot.visible_listing_count == 88
+        assert poll_run.status == "success"
+        assert poll_run.tier == 2
+        assert poll_run.inventory_count == 93
+        assert poll_run.pagination_complete == 1
+    finally:
+        session.close()
 
 
 @pytest.mark.asyncio

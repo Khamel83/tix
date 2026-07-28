@@ -4,8 +4,14 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from ticket_sniper.config import settings
-from ticket_sniper.db.models import SourceEvent
+from ticket_sniper.db.models import (
+    EventPriceSnapshot,
+    PollRun,
+    SourceEvent,
+    utcnow_str,
+)
 from ticket_sniper.db.session import run_db_transaction
+from ticket_sniper.discovery.seatgeek import SeatGeekDiscovery
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +117,65 @@ def event_poll_job_id(source: str, source_event_id: str) -> str:
 
 
 async def poll_event_ticket_data(source: str, source_event_id: str, tier: int) -> None:
-    logger.info("Ticket data poll due for %s:%s at tier %s", source, source_event_id, tier)
+    if source != "seatgeek":
+        raise ValueError(f"Unsupported event poll source: {source}")
+
+    def _start(session):
+        run = PollRun(
+            tier=tier,
+            source=source,
+            source_event_id=source_event_id,
+            status="running",
+        )
+        session.add(run)
+        session.flush()
+        return run.id
+
+    run_id = await run_db_transaction(_start)
+    try:
+        event = await SeatGeekDiscovery().fetch_event(source_event_id)
+        stats = event.get("stats") or {}
+        listing_count = int(stats.get("listing_count") or 0)
+
+        def _complete(session):
+            session.add(
+                EventPriceSnapshot(
+                    source=source,
+                    source_event_id=source_event_id,
+                    lowest_price=stats.get("lowest_price"),
+                    average_price=stats.get("average_price"),
+                    highest_price=stats.get("highest_price"),
+                    listing_count=listing_count,
+                    visible_listing_count=stats.get("visible_listing_count"),
+                    gate_decision="not_evaluated",
+                    gate_reason="aggregate_event_stats",
+                )
+            )
+            run = session.get(PollRun, run_id)
+            run.status = "success"
+            run.completed_at = utcnow_str()
+            run.pagination_complete = 1
+            run.inventory_count = listing_count
+            run.parser_version = "seatgeek-event-stats-v1"
+
+        await run_db_transaction(_complete)
+        logger.info(
+            "Ticket data poll completed for %s:%s at tier %s with %s listings",
+            source,
+            source_event_id,
+            tier,
+            listing_count,
+        )
+    except Exception as exc:
+        def _fail(session):
+            run = session.get(PollRun, run_id)
+            run.status = "failed"
+            run.completed_at = utcnow_str()
+            run.error_code = exc.__class__.__name__
+            run.error_summary = "SeatGeek event statistics poll failed"
+
+        await run_db_transaction(_fail)
+        raise
 
 
 def _job_interval_seconds(job: Any) -> Optional[int]:
