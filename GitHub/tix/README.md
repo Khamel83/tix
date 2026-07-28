@@ -15,3 +15,6 @@ Target Repository: [Khamel83/tix](https://github.com/Khamel83/tix)
 1. Copy `.env.example` to `.env` and fill in credentials (`SEATGEEK_CLIENT_ID`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ARGUS_BASE_URL`).
 2. Run `docker-compose up -d --build`.
 3. Check health at `http://localhost:8000/health` or access the UI at `http://localhost:8000`.
+
+## Target Sports Venues
+By default the SeatGeek discovery job seeds and refreshes events for Dodger Stadium, Crypto.com Arena, and Intuit Dome. Override `TARGET_SPORTS_VENUES` with a JSON array of SeatGeek venue names to track a different venue set.
