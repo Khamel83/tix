@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from ticket_sniper.db.session import engine
@@ -30,5 +31,6 @@ def start_scheduler():
         seconds=settings.EVENT_POLL_RECONCILE_SECONDS,
         id='dynamic_event_poll_reconcile',
         replace_existing=True,
+        next_run_time=datetime.now(timezone.utc),
     )
     scheduler.start()

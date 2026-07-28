@@ -10,6 +10,7 @@ os.environ.setdefault("DATABASE_PATH", tempfile.NamedTemporaryFile(delete=False)
 
 import pytest
 
+from ticket_sniper.scheduler import engine as scheduler_engine
 from ticket_sniper.db.models import Base, EventPriceSnapshot, PollRun, SourceEvent
 from ticket_sniper.db.session import SessionLocal, engine
 from ticket_sniper.discovery.seatgeek import SeatGeekDiscovery
@@ -105,6 +106,29 @@ def test_poll_cadence_increases_as_event_approaches():
     assert near_term.interval_seconds > final_day.interval_seconds
     assert near_term.tier == 2
     assert final_day.tier == 2
+
+
+def test_dynamic_poll_reconciliation_runs_immediately_on_scheduler_start(monkeypatch):
+    class FakeStartupScheduler:
+        def __init__(self):
+            self.jobs = {}
+            self.started = False
+
+        def add_job(self, func, trigger, **kwargs):
+            self.jobs[kwargs["id"]] = kwargs
+
+        def start(self):
+            self.started = True
+
+    fake_scheduler = FakeStartupScheduler()
+    monkeypatch.setattr(scheduler_engine, "scheduler", fake_scheduler)
+    before_start = datetime.now(timezone.utc)
+
+    scheduler_engine.start_scheduler()
+
+    reconcile_job = fake_scheduler.jobs["dynamic_event_poll_reconcile"]
+    assert reconcile_job["next_run_time"] >= before_start
+    assert fake_scheduler.started is True
 
 
 @pytest.mark.asyncio
