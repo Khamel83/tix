@@ -34,7 +34,9 @@ class PollCandidate:
 
 
 def parse_utc_datetime(value: str) -> datetime:
-    normalized = value
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("event timestamp must be a nonblank string")
+    normalized = value.strip()
     if normalized.endswith("Z"):
         normalized = f"{normalized[:-1]}+00:00"
     parsed = datetime.fromisoformat(normalized)

@@ -17,6 +17,7 @@ from ticket_sniper.discovery.seatgeek import SeatGeekDiscovery
 from ticket_sniper.scheduler.event_polling import (
     EVENT_POLL_JOB_PREFIX,
     event_poll_job_id,
+    parse_utc_datetime,
     poll_cadence_for_event,
     poll_event_ticket_data,
     reconcile_event_poll_jobs,
@@ -106,6 +107,12 @@ def test_poll_cadence_increases_as_event_approaches():
     assert near_term.interval_seconds > final_day.interval_seconds
     assert near_term.tier == 2
     assert final_day.tier == 2
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_parse_utc_datetime_rejects_malformed_values(value):
+    with pytest.raises(ValueError):
+        parse_utc_datetime(value)
 
 
 def test_dynamic_poll_reconciliation_runs_immediately_on_scheduler_start(monkeypatch):
