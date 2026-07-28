@@ -10,6 +10,7 @@ from ticket_sniper.db.session import run_db_transaction
 logger = logging.getLogger(__name__)
 SEATGEEK_API_BASE = "https://api.seatgeek.com/2"
 SEATGEEK_SOURCE = "seatgeek"
+SCHEDULED_DISCOVERY_MAX_PAGES = 10
 
 class SeatGeekDiscovery:
     def __init__(self):
@@ -62,7 +63,10 @@ class SeatGeekDiscovery:
             if not venue.get("source_venue_id"):
                 logger.warning("Skipping event discovery for unresolved venue %s", venue["display_name"])
                 continue
-            events_by_venue_id[venue["id"]] = await self.fetch_events_for_venue(venue["source_venue_id"])
+            events_by_venue_id[venue["id"]] = await self.fetch_events_for_venue(
+                venue["source_venue_id"],
+                max_pages=SCHEDULED_DISCOVERY_MAX_PAGES,
+            )
 
         events_upserted = await self._upsert_source_events(events_by_venue_id)
         return {

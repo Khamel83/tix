@@ -68,6 +68,8 @@ async def test_upserts_target_venues_and_events():
 @pytest.mark.asyncio
 async def test_collects_default_target_sports_venues_and_associated_events():
     class FakeDiscovery(SeatGeekDiscovery):
+        requested_max_pages = []
+
         async def resolve_venue(self, display_name):
             return {
                 "display_name": display_name,
@@ -81,6 +83,7 @@ async def test_collects_default_target_sports_venues_and_associated_events():
             }
 
         async def fetch_events_for_venue(self, source_venue_id, **kwargs):
+            self.requested_max_pages.append(kwargs.get("max_pages"))
             return [
                 {
                     "id": int(source_venue_id) * 100,
@@ -104,5 +107,6 @@ async def test_collects_default_target_sports_venues_and_associated_events():
         assert {
             event.venue_id for event in session.query(SourceEvent).all()
         } == {venue.id for venue in session.query(Venue).all()}
+        assert FakeDiscovery.requested_max_pages == [10, 10, 10]
     finally:
         session.close()
