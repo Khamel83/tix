@@ -1,4 +1,5 @@
 import sys
+from typing import List
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
@@ -14,6 +15,14 @@ class Settings(BaseSettings):
     GATE_MARGIN: float = Field(0.15, env="GATE_MARGIN")
     DEADMAN_HOURS: int = Field(6, env="DEADMAN_HOURS")
     DATABASE_PATH: str = Field("/data/tickets.sqlite3", env="DATABASE_PATH")
+    TARGET_SPORTS_VENUES: List[str] = Field(
+        default_factory=lambda: [
+            "Dodger Stadium",
+            "Crypto.com Arena",
+            "Intuit Dome",
+        ],
+        env="TARGET_SPORTS_VENUES",
+    )
     
     ALERT_COALESCE_SECONDS: int = 30
     SUSPICIOUS_EMPTY_FLOOR: int = 5
