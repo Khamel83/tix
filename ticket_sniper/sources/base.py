@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Tuple
+from typing import Any, Dict, List, Tuple
 
 class BaseSourceAdapter(ABC):
     @property

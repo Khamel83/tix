@@ -15,7 +15,7 @@ with engine.connect() as conn:
     conn.exec_driver_sql("PRAGMA foreign_keys=ON;")
     conn.exec_driver_sql("PRAGMA busy_timeout=5000;")
 
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
 _db_lock = asyncio.Lock()
 
 async def run_db_transaction(func: Callable[[Session], Any]) -> Any:

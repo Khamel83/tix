@@ -4,10 +4,10 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    SEATGEEK_CLIENT_ID: str = Field(..., env="SEATGEEK_CLIENT_ID")
-    TELEGRAM_BOT_TOKEN: str = Field(..., env="TELEGRAM_BOT_TOKEN")
-    TELEGRAM_CHAT_ID: str = Field(..., env="TELEGRAM_CHAT_ID")
-    ARGUS_BASE_URL: str = Field(..., env="ARGUS_BASE_URL")
+    SEATGEEK_CLIENT_ID: str = Field("", env="SEATGEEK_CLIENT_ID")
+    TELEGRAM_BOT_TOKEN: str = Field("", env="TELEGRAM_BOT_TOKEN")
+    TELEGRAM_CHAT_ID: str = Field("", env="TELEGRAM_CHAT_ID")
+    ARGUS_BASE_URL: str = Field("", env="ARGUS_BASE_URL")
     ARGUS_API_KEY: str = Field("", env="ARGUS_API_KEY")
     TZ_DISPLAY: str = Field("America/Los_Angeles", env="TZ_DISPLAY")
     
@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     GATE_MARGIN: float = Field(0.15, env="GATE_MARGIN")
     DEADMAN_HOURS: int = Field(6, env="DEADMAN_HOURS")
     DATABASE_PATH: str = Field("/data/tickets.sqlite3", env="DATABASE_PATH")
+    TIX_PROTOTYPE_MODE: bool = Field(False, env="TIX_PROTOTYPE_MODE")
     EVENT_POLL_RECONCILE_SECONDS: int = Field(300, env="EVENT_POLL_RECONCILE_SECONDS")
     EVENT_POLL_BASE_INTERVAL_SECONDS: int = Field(21600, env="EVENT_POLL_BASE_INTERVAL_SECONDS")
     EVENT_POLL_APPROACHING_DAYS: int = Field(7, env="EVENT_POLL_APPROACHING_DAYS")

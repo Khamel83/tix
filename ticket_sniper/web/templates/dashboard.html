@@ -1,5 +1,74 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>🎟 Ticket-Sniper Dashboard</h1>
-<p>System Online & Monitoring.</p>
+<h1>Operations Dashboard</h1>
+
+<div class="grid">
+  <section class="panel">
+    <h2>Events</h2>
+    <table>
+      <tr><th>Event</th><th>Venue</th><th>Starts</th><th>Poll</th></tr>
+      {% for event in events %}
+      <tr>
+        <td><a href="/?source={{ event.source }}&source_event_id={{ event.source_event_id }}">{{ event.title }}</a></td>
+        <td>{{ event.venue_name }}</td>
+        <td>{{ event.starts_at_utc }}</td>
+        <td>
+          <form method="post" action="/events/{{ event.source }}/{{ event.source_event_id }}/poll">
+            <button type="submit">Poll</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Outbox</h2>
+    <table>
+      <tr><th>Status</th><th>Count</th></tr>
+      {% for status, count in outbox_counts.items() %}
+      <tr><td>{{ status }}</td><td>{{ count }}</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+</div>
+
+<h2>Listings {{ selected_source }}:{{ selected_event_id }}</h2>
+<table>
+  <tr><th>Section</th><th>Row</th><th>Qty</th><th>All In</th><th>Fee Confidence</th><th>Status</th></tr>
+  {% for listing in listings %}
+  <tr>
+    <td>{{ listing.normalized_section or listing.raw_section }}</td>
+    <td>{{ listing.raw_row }}</td>
+    <td>{{ listing.quantity_available }}</td>
+    <td>{{ listing.unit_price_all_in }}</td>
+    <td>{{ listing.fee_confidence }}</td>
+    <td>{{ listing.status }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>Poll Runs</h2>
+<table>
+  <tr><th>Started</th><th>Event</th><th>Status</th><th>Inventory</th><th>New</th><th>Alerts Queued</th></tr>
+  {% for run in poll_runs %}
+  <tr><td>{{ run.started_at }}</td><td>{{ run.source_event_id }}</td><td>{{ run.status }}</td><td>{{ run.inventory_count }}</td><td>{{ run.new_listing_count }}</td><td>{{ run.changed_listing_count }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Gate Snapshots</h2>
+<table>
+  <tr><th>Observed</th><th>Event</th><th>Lowest</th><th>Decision</th><th>Reason</th></tr>
+  {% for snapshot in snapshots %}
+  <tr><td>{{ snapshot.observed_at }}</td><td>{{ snapshot.source_event_id }}</td><td>{{ snapshot.lowest_price }}</td><td>{{ snapshot.gate_decision }}</td><td>{{ snapshot.gate_reason }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Alert Decisions</h2>
+<table>
+  <tr><th>Decided</th><th>Rule</th><th>Listing</th><th>Branch</th><th>Outcome</th></tr>
+  {% for decision in decisions %}
+  <tr><td>{{ decision.decided_at }}</td><td>{{ decision.rule_id }}</td><td>{{ decision.listing_identity }}</td><td>{{ decision.branch }}</td><td>{{ decision.outcome }}</td></tr>
+  {% endfor %}
+</table>
 {% endblock %}

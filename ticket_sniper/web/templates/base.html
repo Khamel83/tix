@@ -1,10 +1,22 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Ticket-Sniper</title>
-    <style>body { font-family: sans-serif; background: #121212; color: #eee; padding: 20px; }</style>
+    <title>Tix Operations</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #f7f7f4; color: #222; margin: 0; }
+        header { background: #202225; color: white; padding: 14px 24px; }
+        .container { padding: 18px 24px; }
+        table { border-collapse: collapse; width: 100%; margin: 12px 0 24px; background: white; }
+        th, td { border: 1px solid #ddd; padding: 7px 8px; text-align: left; font-size: 14px; }
+        th { background: #ecebe6; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+        .panel { background: white; border: 1px solid #ddd; padding: 12px; }
+        button { padding: 6px 10px; cursor: pointer; }
+        a { color: #164f85; }
+    </style>
 </head>
 <body>
+    <header><strong>Tix</strong> <span>Ticket Sniper Operations</span></header>
     <div class="container">{% block content %}{% endblock %}</div>
 </body>
 </html>

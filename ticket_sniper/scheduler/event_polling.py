@@ -12,10 +12,29 @@ from ticket_sniper.db.models import (
 )
 from ticket_sniper.db.session import run_db_transaction
 from ticket_sniper.discovery.seatgeek import SeatGeekDiscovery
+from ticket_sniper.alerts.pipeline import evaluate_event_alerts
+from ticket_sniper.gates.evaluator import evaluate_event_gate
+from ticket_sniper.listings.collector import collect_event_listings
 
 logger = logging.getLogger(__name__)
 
 EVENT_POLL_JOB_PREFIX = "event_poll:"
+PROTOTYPE_EVENT_STATS = {
+    "demo-dodgers-001": {
+        "lowest_price": 100,
+        "average_price": 150,
+        "highest_price": 300,
+        "listing_count": 3,
+        "visible_listing_count": 3,
+    },
+    "demo-hollywoodbowl-001": {
+        "lowest_price": 120,
+        "average_price": 180,
+        "highest_price": 280,
+        "listing_count": 2,
+        "visible_listing_count": 2,
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -138,32 +157,61 @@ async def poll_event_ticket_data(source: str, source_event_id: str, tier: int) -
 
     run_id = await run_db_transaction(_start)
     try:
-        event = await SeatGeekDiscovery().fetch_event(source_event_id)
-        stats = event.get("stats") or {}
+        if settings.TIX_PROTOTYPE_MODE and source_event_id in PROTOTYPE_EVENT_STATS:
+            stats = PROTOTYPE_EVENT_STATS[source_event_id]
+        else:
+            event = await SeatGeekDiscovery().fetch_event(source_event_id)
+            stats = event.get("stats") or {}
         listing_count = int(stats.get("listing_count") or 0)
 
         def _complete(session):
-            session.add(
-                EventPriceSnapshot(
-                    source=source,
-                    source_event_id=source_event_id,
-                    lowest_price=stats.get("lowest_price"),
-                    average_price=stats.get("average_price"),
-                    highest_price=stats.get("highest_price"),
-                    listing_count=listing_count,
-                    visible_listing_count=stats.get("visible_listing_count"),
-                    gate_decision="not_evaluated",
-                    gate_reason="aggregate_event_stats",
-                )
+            snapshot = EventPriceSnapshot(
+                source=source,
+                source_event_id=source_event_id,
+                lowest_price=stats.get("lowest_price"),
+                average_price=stats.get("average_price"),
+                highest_price=stats.get("highest_price"),
+                listing_count=listing_count,
+                visible_listing_count=stats.get("visible_listing_count"),
+                gate_decision="not_evaluated",
+                gate_reason="aggregate_event_stats",
             )
+            session.add(snapshot)
+            session.flush()
             run = session.get(PollRun, run_id)
             run.status = "success"
             run.completed_at = utcnow_str()
             run.pagination_complete = 1
             run.inventory_count = listing_count
             run.parser_version = "seatgeek-event-stats-v1"
+            return snapshot.id
 
-        await run_db_transaction(_complete)
+        snapshot_id = await run_db_transaction(_complete)
+
+        def _load_snapshot(session):
+            return session.get(EventPriceSnapshot, snapshot_id)
+
+        snapshot = await run_db_transaction(_load_snapshot)
+        gate = await evaluate_event_gate(source, source_event_id, snapshot)
+
+        def _record_gate(session):
+            stored = session.get(EventPriceSnapshot, snapshot_id)
+            stored.gate_decision = gate.decision
+            stored.gate_reason = gate.reason
+
+        await run_db_transaction(_record_gate)
+        if gate.should_collect_listings:
+            listing_summary = await collect_event_listings(source, source_event_id, tier, run_id=run_id)
+            alert_summary = await evaluate_event_alerts(source, source_event_id)
+
+            def _record_summary(session):
+                run = session.get(PollRun, run_id)
+                run.inventory_count = listing_summary["inventory_count"]
+                run.new_listing_count = listing_summary["new_listing_count"]
+                run.changed_listing_count = alert_summary["alerts_queued"]
+                run.completed_at = utcnow_str()
+
+            await run_db_transaction(_record_summary)
         logger.info(
             "Ticket data poll completed for %s:%s at tier %s with %s listings",
             source,
