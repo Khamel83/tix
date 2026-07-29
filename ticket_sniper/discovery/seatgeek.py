@@ -16,6 +16,14 @@ class SeatGeekDiscovery:
     def __init__(self):
         self.client_id = settings.SEATGEEK_CLIENT_ID
 
+    async def fetch_event(self, source_event_id: str) -> Dict[str, Any]:
+        url = f"{SEATGEEK_API_BASE}/events/{source_event_id}"
+        params = {"client_id": self.client_id}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            return response.json()
+
     async def resolve_venue(self, display_name: str) -> Optional[Dict[str, Any]]:
         url = f"{SEATGEEK_API_BASE}/venues"
         params = {"q": display_name, "client_id": self.client_id}
