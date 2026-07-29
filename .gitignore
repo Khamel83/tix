@@ -1,0 +1,12 @@
+.DS_Store
+.env
+*.sqlite3
+*.db
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+dist/
+build/
+*.egg-info/
+*.zip
