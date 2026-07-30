@@ -1,0 +1,35 @@
+{
+  "_fixture_schema": "Each listing contains id, section, row, quantity, splits, price_with_fees.amount, price.amount, and url.",
+  "listings": [
+    {
+      "id": "demo-dodgers-good",
+      "section": "Field 1",
+      "row": "A",
+      "quantity": 4,
+      "splits": [1, 2, 4],
+      "price_with_fees": {"amount": 125.0},
+      "price": {"amount": 98.0},
+      "url": "https://example.test/listing/demo-dodgers-good"
+    },
+    {
+      "id": "demo-dodgers-section",
+      "section": "Reserve 12",
+      "row": "B",
+      "quantity": 2,
+      "splits": [2],
+      "price_with_fees": {"amount": 90.0},
+      "price": {"amount": 72.0},
+      "url": "https://example.test/listing/demo-dodgers-section"
+    },
+    {
+      "id": "demo-dodgers-expensive",
+      "section": "Field 1",
+      "row": "C",
+      "quantity": 2,
+      "splits": [2],
+      "price_with_fees": {"amount": 250.0},
+      "price": {"amount": 210.0},
+      "url": "https://example.test/listing/demo-dodgers-expensive"
+    }
+  ]
+}

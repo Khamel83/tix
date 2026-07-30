@@ -1,0 +1,25 @@
+{
+  "_fixture_schema": "Each listing contains id, section, row, quantity, splits, price_with_fees.amount, price.amount, and url.",
+  "listings": [
+    {
+      "id": "demo-bowl-good",
+      "section": "Terrace 3",
+      "row": "D",
+      "quantity": 4,
+      "splits": [2, 4],
+      "price_with_fees": {"amount": 140.0},
+      "price": {"amount": 115.0},
+      "url": "https://example.test/listing/demo-bowl-good"
+    },
+    {
+      "id": "demo-bowl-expensive",
+      "section": "Terrace 3",
+      "row": "E",
+      "quantity": 2,
+      "splits": [2],
+      "price_with_fees": {"amount": 240.0},
+      "price": {"amount": 205.0},
+      "url": "https://example.test/listing/demo-bowl-expensive"
+    }
+  ]
+}

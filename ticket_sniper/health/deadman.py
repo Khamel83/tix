@@ -1,5 +1,5 @@
 import logging
-import httpx
+import json
 from datetime import datetime, timezone, timedelta
 from ticket_sniper.config import settings
 from ticket_sniper.db.models import PollRun, AlertOutbox
@@ -18,10 +18,17 @@ async def run_deadman_switch_check():
 
     triggered, reason = await run_db_transaction(_inspect_health)
     if triggered:
-        msg = f"⚠️ <b>Ticket-Sniper Operator Alert</b>\n\n{reason}"
-        url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            try:
-                await client.post(url, json={"chat_id": settings.TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"})
-            except Exception as e:
-                logger.error(f"Failed dispatching deadman alert: {e}")
+        msg = f"Ticket-Sniper Operator Alert\n\n{reason}"
+
+        def _enqueue(session):
+            key = f"deadman:tier2:{settings.DEADMAN_HOURS}"
+            existing = session.query(AlertOutbox).filter_by(dedupe_key=key, status="pending").one_or_none()
+            if existing is None:
+                session.add(
+                    AlertOutbox(
+                        payload_json=json.dumps({"text": msg, "source": "deadman"}, sort_keys=True),
+                        dedupe_key=key,
+                    )
+                )
+
+        await run_db_transaction(_enqueue)

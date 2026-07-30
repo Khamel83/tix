@@ -16,47 +16,36 @@ Tix is a self-hosted personal ticket-deal monitor. The intended loop is:
 
 The repository is early-stage. The schema anticipates the full loop, but the runtime only implements parts of it.
 
-## Built On `main`
+## Built In This Product Loop
 
-- FastAPI app with `/health` and a minimal dashboard.
+- FastAPI app with `/health` and an operator dashboard.
 - SQLite schema and SQLAlchemy models for venues, source events, rules, listings, snapshots, fee observations, alert decisions, outbox, poll runs, and transport health.
 - SeatGeek venue resolution and scheduled event discovery for configured sports venues.
 - Bounded SeatGeek event pagination for scheduled discovery.
-- Scheduler jobs for Telegram outbox draining, deadman checks, and SeatGeek target sports discovery.
+- Dynamic event polling with cadence tiers.
+- Scheduler jobs for outbox draining, deadman checks, SeatGeek target sports discovery, and dynamic event poll reconciliation.
 - Argus client wrapper for `/api/fetch-raw`.
-- SeatGeek listing parser skeleton.
+- SeatGeek listing parser for fixture-compatible listing payloads.
+- Fixture-backed prototype listing collection for `demo-dodgers-001` and `demo-hollywoodbowl-001`.
+- Current listing upsert and price history persistence.
+- Gate evaluation from event price snapshots to listing collection.
 - Fee estimator skeleton.
-- Rule fingerprint helper.
-- One-branch alert state transition skeleton.
-- Telegram outbox drain skeleton.
+- Rule fingerprint helper and listing evaluator for sections, quantities, prices, totals, and fee confidence.
+- Alert state transitions for first alerts, duplicate suppression, material re-alerts, cooldown suppression, and recovery.
+- Alert decisions and durable outbox enqueueing.
+- Telegram outbox worker with success, failure/backoff, and skipped-placeholder credential states.
+- Deadman checks routed through the durable outbox.
+- Operator dashboard with events, listings, poll runs, gate snapshots, alert decisions, outbox counts, and manual event polling.
 - Tests for SeatGeek discovery.
 - Docker Compose service and Alembic startup migration.
-
-## Built In Open PR
-
-PR #6 adds dynamic event polling:
-
-- Event poll cadence tiers based on event start time.
-- Scheduler reconciliation for upcoming SeatGeek source events.
-- SeatGeek event stats polling into `event_price_snapshots`.
-- Poll run success/failure recording.
-- Tests for cadence, reconciliation, malformed timestamps, startup reconciliation, and stats persistence.
-
-PR #6 is mergeable in GitHub, but it was built against the old nested repository layout. Rebase or recreate it after the repository root cleanup lands.
+- GitHub Actions pytest workflow.
 
 ## Partial Or Missing
 
-- Listing-level collection is not wired. The Argus client and SeatGeek parser exist, but no runtime path fetches raw listing pages, parses listings, upserts `listings_current`, or writes `listing_price_history`.
-- Gate evaluation is represented in the schema, but there is no gate implementation that compares aggregate event stats against rules and triggers deeper polling.
-- Rule evaluation is incomplete. There is no implemented matcher evaluation over sections, quantity modes, fee confidence, or max order total.
-- Alert state machine is incomplete. The README claims a 9-branch anti-flap state machine, but `main` only handles first-time qualification.
-- Alert decisions are not written by a runtime evaluation flow.
-- Alert outbox messages are not produced by rule evaluation.
-- Telegram delivery does not yet mark failed attempts with backoff or record durable failure state.
-- Deadman check sends Telegram directly instead of using the alert outbox.
-- Dashboard is only a static online page.
-- Configuration and docs do not yet distinguish required credentials, optional integrations, or local development defaults.
-- There is no CI workflow.
+- Live listing collection URL details remain behind the Argus adapter and intentionally fail closed when no fixture fallback applies.
+- Fee estimation remains a skeleton and is not yet used to infer all-in prices for sources that only provide listed prices.
+- The prototype rules are seeded locally; there is not yet a dashboard editor for rules or section aliases.
+- Telegram delivery requires real credentials; prototype mode can queue and inspect outbox rows without sending.
 
 ## GitHub State
 
@@ -74,14 +63,6 @@ PR #6 is mergeable in GitHub, but it was built against the old nested repository
 4. Label issues #2 and #4 as `needs-source-review`.
 5. Convert this audit into concrete implementation issues for the missing runtime loop.
 
-## Next Build Slice
+## Prototype Verification
 
-The next practical slice should be the end-to-end listing evaluation path:
-
-1. Poll one SeatGeek source event through Argus or official API data.
-2. Parse listings into `listings_current` and `listing_price_history`.
-3. Evaluate one real rule against those listings.
-4. Create alert decisions and enqueue alert outbox rows.
-5. Let the existing Telegram drain deliver those queued alerts.
-
-That slice would turn Tix from a schema plus discovery service into a working ticket-deal monitor.
+The local prototype can seed Dodgers and Hollywood Bowl events, poll fixture event stats, pass the gate, persist listings, evaluate rules, write alert decisions, enqueue outbox messages, and show the result in the dashboard without live Argus, live SeatGeek event fetches for demo IDs, live Telegram credentials, or any purchase flow.

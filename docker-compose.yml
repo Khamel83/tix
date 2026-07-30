@@ -17,6 +17,7 @@ services:
       - TIER2_MAX_REQUESTS_PER_DAY=${TIER2_MAX_REQUESTS_PER_DAY:-600}
       - GATE_MARGIN=${GATE_MARGIN:-0.15}
       - DEADMAN_HOURS=${DEADMAN_HOURS:-6}
+      - TIX_PROTOTYPE_MODE=${TIX_PROTOTYPE_MODE:-0}
       - DATABASE_PATH=/data/tickets.sqlite3
     volumes:
       - sniper_data:/data
