@@ -30,10 +30,25 @@ async def _fetch_live_argus_payload(source_event_id: str) -> str:
 
     event_url = await run_db_transaction(_event_url)
     response = await ArgusClient().fetch_raw(
-        FetchRawRequest(url=event_url, timeout_seconds=20)
+        FetchRawRequest(
+            url=event_url,
+            render="browser",
+            cache=False,
+            extractors=["raw_html"],
+            impersonate="chrome",
+            egress="residential",
+            timeout_seconds=20,
+        )
     )
-    if response.status != "ok" or not response.body:
-        raise RuntimeError("Argus listing collection failed")
+    if response.status != "ok":
+        message = "Argus listing collection failed"
+        if response.http_status is not None:
+            message += f" (http_status={response.http_status})"
+        if response.error:
+            message += f": {response.error}"
+        raise RuntimeError(message)
+    if not response.body:
+        raise RuntimeError("Argus listing collection failed: empty response body")
     return response.body
 
 

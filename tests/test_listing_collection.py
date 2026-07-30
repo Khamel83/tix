@@ -72,7 +72,7 @@ async def test_live_collection_uses_stored_source_event_url(seed_event_and_rule,
     captured = {}
 
     async def fake_fetch_raw(self, request):
-        captured["url"] = request.url
+        captured["request"] = request
         return FetchRawResponse(status="ok", body=fixture_body())
 
     monkeypatch.setattr(ArgusClient, "fetch_raw", fake_fetch_raw)
@@ -80,7 +80,32 @@ async def test_live_collection_uses_stored_source_event_url(seed_event_and_rule,
     summary = await collect_event_listings("seatgeek", "real-event", tier=2)
 
     assert summary["status"] == "success"
-    assert captured["url"] == event_url
+    assert captured["request"].url == event_url
+    assert captured["request"].render == "browser"
+    assert captured["request"].extractors == ["raw_html"]
+
+
+@pytest.mark.asyncio
+async def test_live_collection_preserves_argus_error_and_http_status(
+    seed_event_and_rule, monkeypatch
+):
+    seed_event_and_rule(source_event_id="real-error", venue_name="Error Venue")
+
+    async def fake_fetch_raw(self, request):
+        return FetchRawResponse(
+            status="error",
+            http_status=503,
+            error="managed browser unavailable",
+        )
+
+    monkeypatch.setattr(ArgusClient, "fetch_raw", fake_fetch_raw)
+
+    with pytest.raises(RuntimeError) as failure:
+        await collect_event_listings("seatgeek", "real-error", tier=2)
+
+    assert str(failure.value) == (
+        "Argus listing collection failed (http_status=503): managed browser unavailable"
+    )
 
 
 @pytest.mark.asyncio
