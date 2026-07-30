@@ -6,6 +6,7 @@ from sqlalchemy import func
 
 from ticket_sniper.db.models import AlertDecision, AlertOutbox, EventPriceSnapshot, ListingCurrent, PollRun, SourceEvent
 from ticket_sniper.db.session import SessionLocal
+from ticket_sniper.profiles.preferences import load_active_profile
 from ticket_sniper.scheduler.event_polling import poll_event_ticket_data
 
 app = FastAPI(title="Ticket-Sniper Operations")
@@ -16,7 +17,7 @@ def health_check():
     return JSONResponse({"status": "healthy"})
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard(request: Request):
+async def dashboard(request: Request):
     selected_source = request.query_params.get("source") or "seatgeek"
     selected_event_id = request.query_params.get("source_event_id")
     session = SessionLocal()
@@ -42,10 +43,12 @@ def dashboard(request: Request):
             .group_by(AlertOutbox.status)
             .all()
         }
+        profile = await load_active_profile()
         return templates.TemplateResponse(
             request,
             "dashboard.html",
             {
+                "profile": profile,
                 "events": events,
                 "selected_source": selected_source,
                 "selected_event_id": selected_event_id,

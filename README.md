@@ -12,6 +12,7 @@ Built today:
 
 - SeatGeek venue resolution and scheduled event discovery.
 - SQLite persistence with Alembic migrations.
+- Configurable profile preferences for sports and venues.
 - Fixture-backed prototype events for Dodger Stadium and Hollywood Bowl.
 - Listing parsing, current listing persistence, and price history.
 - Gate evaluation from aggregate event stats into deeper listing collection.
@@ -41,7 +42,10 @@ TIX_PROTOTYPE_MODE=1 DATABASE_PATH=./tickets.sqlite3 .venv/bin/python -m ticket_
 TIX_PROTOTYPE_MODE=1 DATABASE_PATH=./tickets.sqlite3 .venv/bin/uvicorn ticket_sniper.web.app:app --reload
 ```
 
-Open `http://localhost:8000`, select the Dodgers or Hollywood Bowl demo event, and use `Poll` to run fixture event stats, listing collection, rule evaluation, alert decision writing, and outbox enqueueing.
+Open `http://localhost:8000`, inspect the active profile preferences, select the Dodgers or Hollywood Bowl demo event, and use `Poll` to run fixture event stats, listing collection, rule evaluation, alert decision writing, and outbox enqueueing.
 
-## Target Sports Venues
-By default the SeatGeek discovery job seeds and refreshes events for Dodger Stadium, Crypto.com Arena, and Intuit Dome. Override `TARGET_SPORTS_VENUES` with a JSON array of SeatGeek venue names to track a different venue set. Demo seed data also includes Hollywood Bowl.
+## Profile Preferences
+
+Tix keeps sports and venue interests in the default profile rather than only in code-level constants. The default profile tracks Dodgers, Lakers, Clippers, and Kings style interests plus Los Angeles venues including Dodger Stadium, Crypto.com Arena, Intuit Dome, BMO Stadium, and Hollywood Bowl.
+
+SeatGeek discovery reads enabled profile venues when no explicit venue list is passed. `TARGET_SPORTS_VENUES` remains a fallback for empty or missing profile data.

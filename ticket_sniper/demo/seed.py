@@ -4,17 +4,27 @@ import json
 from ticket_sniper.db.models import Base, Rule, RuleSectionMatcher, SourceEvent, Venue, utcnow_str
 from ticket_sniper.db.session import engine, run_db_transaction
 from ticket_sniper.listings.collector import collect_event_listings
+from ticket_sniper.profiles.preferences import load_active_profile, seed_profile
 from ticket_sniper.rules.evaluator import compute_rule_fingerprint
+
+DEMO_EVENT_BY_VENUE = {
+    "Dodger Stadium": ("demo-dodgers-001", "Dodgers Demo", "Field 1", 150.0, 300.0),
+    "Hollywood Bowl": ("demo-hollywoodbowl-001", "Hollywood Bowl Demo", "Terrace 3", 160.0, 320.0),
+}
 
 
 async def seed_demo_data() -> dict:
     Base.metadata.create_all(bind=engine)
+    profile_summary = await seed_profile()
+    profile = await load_active_profile()
+    profile_venues = [venue["display_name"] for venue in (profile or {}).get("venues", [])]
 
     def _seed_core(session):
         created = {"venues": 0, "events": 0, "rules": 0}
         specs = [
-            ("Dodger Stadium", "demo-dodgers-001", "Dodgers Demo", "Field 1", 150.0, 300.0),
-            ("Hollywood Bowl", "demo-hollywoodbowl-001", "Hollywood Bowl Demo", "Terrace 3", 160.0, 320.0),
+            (venue_name, *DEMO_EVENT_BY_VENUE[venue_name])
+            for venue_name in profile_venues
+            if venue_name in DEMO_EVENT_BY_VENUE
         ]
         for venue_name, event_id, title, section, max_unit, max_total in specs:
             venue = session.query(Venue).filter_by(display_name=venue_name).one_or_none()
@@ -71,6 +81,9 @@ async def seed_demo_data() -> dict:
         return created
 
     summary = await run_db_transaction(_seed_core)
+    summary["profiles"] = profile_summary["profiles"]
+    summary["profile_sports"] = profile_summary["sports"]
+    summary["profile_venues"] = profile_summary["venues"]
     dodgers = await collect_event_listings("seatgeek", "demo-dodgers-001", tier=0)
     bowl = await collect_event_listings("seatgeek", "demo-hollywoodbowl-001", tier=0)
     summary["listings"] = dodgers["listings_seen"] + bowl["listings_seen"]

@@ -13,6 +13,8 @@ def test_dashboard_loads_with_seeded_events(anyio_backend):
     assert response.status_code == 200
     assert "Dodgers Demo" in response.text
     assert "Hollywood Bowl Demo" in response.text
+    assert "Default Tix Profile" in response.text
+    assert "Dodgers" in response.text
 
 
 def test_manual_poll_route_runs_prototype_loop(anyio_backend):
