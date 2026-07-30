@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 from ticket_sniper.argus.client import ArgusClient
 from ticket_sniper.argus.models import FetchRawRequest
 from ticket_sniper.config import settings
-from ticket_sniper.db.models import ListingCurrent, ListingPriceHistory, PollRun, utcnow_str
+from ticket_sniper.db.models import ListingCurrent, ListingPriceHistory, PollRun, SourceEvent, utcnow_str
 from ticket_sniper.db.session import run_db_transaction
 from ticket_sniper.sources.seatgeek import SeatGeekAdapter
 
@@ -22,8 +22,15 @@ def _fixture_path(source_event_id: str) -> Path | None:
 
 
 async def _fetch_live_argus_payload(source_event_id: str) -> str:
+    def _event_url(session):
+        event = session.get(SourceEvent, ("seatgeek", source_event_id))
+        if event is None or not event.event_url:
+            raise RuntimeError(f"No stored event URL for SeatGeek event {source_event_id}")
+        return event.event_url
+
+    event_url = await run_db_transaction(_event_url)
     response = await ArgusClient().fetch_raw(
-        FetchRawRequest(url=f"https://seatgeek.com/events/{source_event_id}", timeout_seconds=20)
+        FetchRawRequest(url=event_url, timeout_seconds=20)
     )
     if response.status != "ok" or not response.body:
         raise RuntimeError("Argus listing collection failed")

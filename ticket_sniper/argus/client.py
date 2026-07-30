@@ -17,9 +17,12 @@ class ArgusClient:
         async with httpx.AsyncClient(timeout=float(request.timeout_seconds + 5)) as client:
             try:
                 resp = await client.post(url, json=request.model_dump(), headers=self.headers)
+                response_payload = FetchRawResponse(**resp.json())
+                if response_payload.status == "error":
+                    return response_payload
                 if resp.status_code != 200:
                     return FetchRawResponse(status="error", http_status=resp.status_code)
-                return FetchRawResponse(**resp.json())
+                return response_payload
             except Exception as e:
                 logger.error(f"Argus transport exception: {e}")
                 return FetchRawResponse(status="error")
