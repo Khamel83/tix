@@ -2,7 +2,9 @@ import json
 
 import pytest
 
-from ticket_sniper.db.models import ListingCurrent, ListingPriceHistory, PollRun
+from ticket_sniper.argus.client import ArgusClient
+from ticket_sniper.argus.models import FetchRawResponse
+from ticket_sniper.db.models import ListingCurrent, ListingPriceHistory, PollRun, SourceEvent
 from ticket_sniper.db.session import SessionLocal, run_db_transaction
 from ticket_sniper.listings.collector import collect_event_listings, upsert_listings
 from ticket_sniper.sources.seatgeek import SeatGeekAdapter
@@ -30,6 +32,80 @@ def test_seatgeek_fixture_listing_parser_normalizes_fields():
     assert good["unit_price_listed"] == 98.0
     assert good["fee_confidence"] == "high"
     assert len(good["payload_hash"]) == 64
+
+
+def test_seatgeek_parser_accepts_direct_listing_json():
+    listings, count, complete = SeatGeekAdapter().parse_inventory(
+        fixture_body(), "demo-dodgers-001"
+    )
+
+    assert count == 3
+    assert complete is True
+    assert listings[0]["source_listing_id"] == "demo-dodgers-good"
+
+
+def test_seatgeek_parser_accepts_listing_json_embedded_in_html_script():
+    inventory = json.loads(fixture_body())
+    html = (
+        "<html><head><script id=\"__NEXT_DATA__\" type=\"application/json\">"
+        + json.dumps({"props": {"pageProps": {"inventory": inventory}}})
+        + "</script></head><body></body></html>"
+    )
+
+    listings, count, complete = SeatGeekAdapter().parse_inventory(html, "demo-dodgers-001")
+
+    assert count == 3
+    assert complete is True
+    assert listings[0]["source_listing_id"] == "demo-dodgers-good"
+
+
+@pytest.mark.asyncio
+async def test_live_collection_uses_stored_source_event_url(seed_event_and_rule, monkeypatch):
+    event_url = "https://seatgeek.com/los-angeles-dodgers-tickets/example-real-event"
+    seed_event_and_rule(source_event_id="real-event", venue_name="Real Venue")
+
+    def update_event_url(session):
+        event = session.get(SourceEvent, ("seatgeek", "real-event"))
+        event.event_url = event_url
+
+    await run_db_transaction(update_event_url)
+    captured = {}
+
+    async def fake_fetch_raw(self, request):
+        captured["request"] = request
+        return FetchRawResponse(status="ok", body=fixture_body())
+
+    monkeypatch.setattr(ArgusClient, "fetch_raw", fake_fetch_raw)
+
+    summary = await collect_event_listings("seatgeek", "real-event", tier=2)
+
+    assert summary["status"] == "success"
+    assert captured["request"].url == event_url
+    assert captured["request"].render == "browser"
+    assert captured["request"].extractors == ["raw_html"]
+
+
+@pytest.mark.asyncio
+async def test_live_collection_preserves_argus_error_and_http_status(
+    seed_event_and_rule, monkeypatch
+):
+    seed_event_and_rule(source_event_id="real-error", venue_name="Error Venue")
+
+    async def fake_fetch_raw(self, request):
+        return FetchRawResponse(
+            status="error",
+            http_status=503,
+            error="managed browser unavailable",
+        )
+
+    monkeypatch.setattr(ArgusClient, "fetch_raw", fake_fetch_raw)
+
+    with pytest.raises(RuntimeError) as failure:
+        await collect_event_listings("seatgeek", "real-error", tier=2)
+
+    assert str(failure.value) == (
+        "Argus listing collection failed (http_status=503): managed browser unavailable"
+    )
 
 
 @pytest.mark.asyncio

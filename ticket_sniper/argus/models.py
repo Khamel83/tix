@@ -14,6 +14,7 @@ class FetchRawRequest(BaseModel):
 class FetchRawResponse(BaseModel):
     status: str
     http_status: Optional[int] = None
+    error: Optional[str] = None
     final_url: Optional[str] = None
     headers: Dict[str, str] = Field(default_factory=dict)
     body: str = ""

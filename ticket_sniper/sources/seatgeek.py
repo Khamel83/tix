@@ -1,10 +1,12 @@
 import json
 import hashlib
+import re
 from typing import List, Dict, Any, Tuple
 from ticket_sniper.sources.base import BaseSourceAdapter
 
 ADAPTER_VERSION = "seatgeek-listings-v1"
 PARSER_VERSION = "seatgeek-fixture-v1"
+_SCRIPT_RE = re.compile(r"<script\b[^>]*>(.*?)</script\s*>", re.IGNORECASE | re.DOTALL)
 
 
 def _amount(value: Dict[str, Any] | None) -> float | None:
@@ -14,12 +16,48 @@ def _amount(value: Dict[str, Any] | None) -> float | None:
     return float(amount) if amount is not None else None
 
 
+def _listing_data_from_scripts(raw_body: str) -> Dict[str, Any]:
+    decoder = json.JSONDecoder()
+    for match in _SCRIPT_RE.finditer(raw_body):
+        script = match.group(1).strip()
+        for index, char in enumerate(script):
+            if char not in "[{":
+                continue
+            try:
+                payload, _ = decoder.raw_decode(script[index:])
+            except json.JSONDecodeError:
+                continue
+            listing_data = _find_listing_data(payload)
+            if listing_data is not None:
+                return listing_data
+    raise ValueError("No listing JSON found in rendered SeatGeek HTML")
+
+
+def _find_listing_data(payload: Any) -> Dict[str, Any] | None:
+    if isinstance(payload, dict):
+        if isinstance(payload.get("listings"), list):
+            return payload
+        for value in payload.values():
+            listing_data = _find_listing_data(value)
+            if listing_data is not None:
+                return listing_data
+    elif isinstance(payload, list):
+        for value in payload:
+            listing_data = _find_listing_data(value)
+            if listing_data is not None:
+                return listing_data
+    return None
+
+
 class SeatGeekAdapter(BaseSourceAdapter):
     @property
     def source_name(self) -> str: return "seatgeek"
 
     def parse_inventory(self, raw_body: str, source_event_id: str) -> Tuple[List[Dict[str, Any]], int, bool]:
-        data = json.loads(raw_body)
+        try:
+            data = json.loads(raw_body)
+        except json.JSONDecodeError:
+            data = _listing_data_from_scripts(raw_body)
         listings = data.get("listings", [])
         parsed = []
         for item in listings:
