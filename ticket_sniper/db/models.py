@@ -36,6 +36,54 @@ class SourceEvent(Base):
     last_seen_at = Column(Text, nullable=False, default=utcnow_str)
     __table_args__ = (CheckConstraint("starts_at_utc LIKE '%Z'"),)
 
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    slug = Column(Text, nullable=False, unique=True)
+    display_name = Column(Text, nullable=False)
+    home_city = Column(Text, nullable=True)
+    timezone = Column(Text, nullable=False, default="America/Los_Angeles")
+    default_source = Column(Text, nullable=False, default="seatgeek")
+    preferred_quantity = Column(Integer, nullable=False, default=2)
+    max_unit_price_all_in = Column(Float, nullable=True)
+    max_order_total = Column(Float, nullable=True)
+    enabled = Column(Integer, nullable=False, default=1)
+    created_at = Column(Text, nullable=False, default=utcnow_str)
+    updated_at = Column(Text, nullable=False, default=utcnow_str)
+    sports = relationship("ProfileSport", backref="profile", cascade="all, delete-orphan")
+    venues = relationship("ProfileVenue", backref="profile", cascade="all, delete-orphan")
+
+
+class ProfileSport(Base):
+    __tablename__ = "profile_sports"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    profile_id = Column(Integer, ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False)
+    sport_name = Column(Text, nullable=False)
+    performer_slug = Column(Text, nullable=True)
+    enabled = Column(Integer, nullable=False, default=1)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(Text, nullable=False, default=utcnow_str)
+    updated_at = Column(Text, nullable=False, default=utcnow_str)
+    __table_args__ = (UniqueConstraint("profile_id", "sport_name"),)
+
+
+class ProfileVenue(Base):
+    __tablename__ = "profile_venues"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    profile_id = Column(Integer, ForeignKey("user_profiles.id", ondelete="CASCADE"), nullable=False)
+    display_name = Column(Text, nullable=False)
+    source = Column(Text, nullable=False, default="seatgeek")
+    source_venue_id = Column(Text, nullable=True)
+    city = Column(Text, nullable=True)
+    timezone = Column(Text, nullable=False, default="America/Los_Angeles")
+    enabled = Column(Integer, nullable=False, default=1)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(Text, nullable=False, default=utcnow_str)
+    updated_at = Column(Text, nullable=False, default=utcnow_str)
+    __table_args__ = (UniqueConstraint("profile_id", "source", "display_name"),)
+
+
 class Rule(Base):
     __tablename__ = "rules"
     id = Column(Integer, primary_key=True, autoincrement=True)

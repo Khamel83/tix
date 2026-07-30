@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any, Iterable, List
 from ticket_sniper.config import settings
 from ticket_sniper.db.models import SourceEvent, Venue, utcnow_str
 from ticket_sniper.db.session import run_db_transaction
+from ticket_sniper.profiles.preferences import get_target_venue_names
 
 logger = logging.getLogger(__name__)
 SEATGEEK_API_BASE = "https://api.seatgeek.com/2"
@@ -48,7 +49,7 @@ class SeatGeekDiscovery:
         self,
         target_venues: Optional[Iterable[str]] = None,
     ) -> Dict[str, int]:
-        venue_names = list(target_venues or settings.TARGET_SPORTS_VENUES)
+        venue_names = list(target_venues) if target_venues is not None else await get_target_venue_names()
         if not venue_names:
             return {"venues_seeded": 0, "venues_resolved": 0, "events_upserted": 0}
 

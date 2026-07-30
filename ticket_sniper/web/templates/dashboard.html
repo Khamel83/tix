@@ -4,6 +4,21 @@
 
 <div class="grid">
   <section class="panel">
+    <h2>Profile</h2>
+    {% if profile %}
+    <table>
+      <tr><th>Name</th><td>{{ profile.display_name }}</td></tr>
+      <tr><th>City</th><td>{{ profile.home_city }}</td></tr>
+      <tr><th>Sports</th><td>{{ profile.sports | join(", ") }}</td></tr>
+      <tr><th>Venues</th><td>{% for venue in profile.venues %}{{ venue.display_name }}{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
+      <tr><th>Default Qty</th><td>{{ profile.preferred_quantity }}</td></tr>
+    </table>
+    {% else %}
+    <p>No active profile.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
     <h2>Events</h2>
     <table>
       <tr><th>Event</th><th>Venue</th><th>Starts</th><th>Poll</th></tr>

@@ -12,6 +12,7 @@ import pytest
 from ticket_sniper.db.models import Base, SourceEvent, Venue
 from ticket_sniper.db.session import SessionLocal, engine
 from ticket_sniper.discovery.seatgeek import SeatGeekDiscovery
+from ticket_sniper.profiles.preferences import ProfileSpec, VenuePreference, seed_profile
 
 
 @pytest.fixture(autouse=True)
@@ -110,3 +111,49 @@ async def test_collects_default_target_sports_venues_and_associated_events():
         assert FakeDiscovery.requested_max_pages == [10, 10, 10]
     finally:
         session.close()
+
+
+@pytest.mark.asyncio
+async def test_collects_profile_venues_when_no_explicit_targets_are_passed():
+    await seed_profile(
+        ProfileSpec(
+            slug="default",
+            display_name="Default Tix Profile",
+            home_city="Seattle",
+            sports=["Mariners"],
+            venues=[
+                VenuePreference(display_name="T-Mobile Park", city="Seattle", source_venue_id="100"),
+                VenuePreference(display_name="Climate Pledge Arena", city="Seattle", source_venue_id="200"),
+            ],
+        )
+    )
+
+    class FakeDiscovery(SeatGeekDiscovery):
+        requested_venues = []
+
+        async def resolve_venue(self, display_name):
+            self.requested_venues.append(display_name)
+            return {
+                "display_name": display_name,
+                "source_venue_id": {"T-Mobile Park": "100", "Climate Pledge Arena": "200"}[display_name],
+                "city": "Seattle",
+                "timezone": "America/Los_Angeles",
+            }
+
+        async def fetch_events_for_venue(self, source_venue_id, **kwargs):
+            return [
+                {
+                    "id": int(source_venue_id),
+                    "title": f"Event {source_venue_id}",
+                    "datetime_utc": "2026-09-01T03:00:00Z",
+                    "url": f"https://seatgeek.test/event/{source_venue_id}",
+                    "venue": {"name": f"Venue {source_venue_id}"},
+                    "performers": [],
+                }
+            ]
+
+    result = await FakeDiscovery().collect_target_sports_venues_and_events()
+
+    assert FakeDiscovery.requested_venues == ["T-Mobile Park", "Climate Pledge Arena"]
+    assert result["venues_seeded"] == 2
+    assert result["events_upserted"] == 2
