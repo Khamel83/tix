@@ -75,3 +75,11 @@ _Avoid_: Health check when referring to stale polling specifically
 **Argus**:
 The external fetch broker intended to perform raw or rendered data collection for ticket sources.
 _Avoid_: Browser, scraper
+<!-- janitor:begin:recent -->
+- Source commit: `6da9e0d5b47f825141b1e8973f8e78ba325b8ecf` (merge of `codex/argus-live-integration`, PR #15).
+- Commit subjects indicate listing collection was integrated with Argus raw fetch, and the Argus raw fetch contract was subsequently fixed (`808c4fd7f1c3533002c0a116692955e0c23075f8`, `71aa988bc4d2a26310c55798875a1de53a4fce5e`).
+- Configurable profile preferences were added and merged via PR #14 (`9b127823c5199145b1cdf75fc5679841c93a2661`, `83fcf868c45f06dd907022e09e189bd76634f195`).
+- The local product loop prototype was completed (`afcf409d197960b4dfd146bb042e3557eb4816b4`), after product loop implementation plan docs (`3c61dae8a7b5e34c36ee507ca8faa391f5153a4d`) and plan review synthesis (`7372a36a577f3f92ff827cf27073c64150d3a4c5`).
+- Dynamic SeatGeek event polling was added (`c8077aa188876afe78f27161c319806e65801b6e`).
+- Earlier commits established the MVP architecture baseline (PRD v2, engine, schemas, docs) and normalized the repository root (`74177127fa90869f1a0dce3742eb7ee6fe8e998a`, `929a83e1c3fe1f0c2183fc79bc6554ce0c073c63`, `f3a939a982cf2240a05177489b5ecf61db4bd840`).
+<!-- janitor:end:recent -->
