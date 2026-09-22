@@ -10,6 +10,8 @@ os.environ.setdefault("DATABASE_PATH", tempfile.NamedTemporaryFile(delete=False)
 
 import pytest
 
+from ticket_sniper.gates.evaluator import GateResult
+from ticket_sniper.scheduler import event_polling
 from ticket_sniper.scheduler import engine as scheduler_engine
 from ticket_sniper.db.models import Base, EventPriceSnapshot, PollRun, SourceEvent
 from ticket_sniper.db.session import SessionLocal, engine
@@ -173,6 +175,47 @@ async def test_event_poll_fetches_and_persists_live_seatgeek_stats(monkeypatch):
         assert poll_run.tier == 2
         assert poll_run.inventory_count == 93
         assert poll_run.pagination_complete == 1
+    finally:
+        session.close()
+
+
+@pytest.mark.asyncio
+async def test_event_poll_preserves_listing_change_count_when_alerts_queue(monkeypatch):
+    add_event("near-term", datetime(2026, 7, 30, 12, 0, tzinfo=timezone.utc))
+
+    async def fake_fetch_event(self, source_event_id):
+        return {"stats": {"lowest_price": 81, "listing_count": 4}}
+
+    async def fake_collect_event_listings(source, source_event_id, tier, run_id):
+        return {
+            "inventory_count": 4,
+            "new_listing_count": 2,
+            "changed_listing_count": 3,
+        }
+
+    alert_calls = []
+
+    async def fake_evaluate_event_alerts(source, source_event_id):
+        alert_calls.append((source, source_event_id))
+        return {"alerts_queued": 1}
+
+    async def fake_evaluate_event_gate(source, source_event_id, snapshot):
+        return GateResult(True, "pass", "test gate")
+
+    monkeypatch.setattr(SeatGeekDiscovery, "fetch_event", fake_fetch_event, raising=False)
+    monkeypatch.setattr(event_polling, "collect_event_listings", fake_collect_event_listings)
+    monkeypatch.setattr(event_polling, "evaluate_event_alerts", fake_evaluate_event_alerts)
+    monkeypatch.setattr(event_polling, "evaluate_event_gate", fake_evaluate_event_gate)
+
+    await poll_event_ticket_data("seatgeek", "near-term", tier=2)
+
+    session = SessionLocal()
+    try:
+        poll_run = session.query(PollRun).one()
+        assert poll_run.inventory_count == 4
+        assert poll_run.new_listing_count == 2
+        assert poll_run.changed_listing_count == 3
+        assert alert_calls == [("seatgeek", "near-term")]
     finally:
         session.close()
 

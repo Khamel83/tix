@@ -202,13 +202,13 @@ async def poll_event_ticket_data(source: str, source_event_id: str, tier: int) -
         await run_db_transaction(_record_gate)
         if gate.should_collect_listings:
             listing_summary = await collect_event_listings(source, source_event_id, tier, run_id=run_id)
-            alert_summary = await evaluate_event_alerts(source, source_event_id)
+            await evaluate_event_alerts(source, source_event_id)
 
             def _record_summary(session):
                 run = session.get(PollRun, run_id)
                 run.inventory_count = listing_summary["inventory_count"]
                 run.new_listing_count = listing_summary["new_listing_count"]
-                run.changed_listing_count = alert_summary["alerts_queued"]
+                run.changed_listing_count = listing_summary["changed_listing_count"]
                 run.completed_at = utcnow_str()
 
             await run_db_transaction(_record_summary)
