@@ -59,6 +59,54 @@ def test_seatgeek_parser_accepts_listing_json_embedded_in_html_script():
     assert listings[0]["source_listing_id"] == "demo-dodgers-good"
 
 
+class _ScraplingJsonResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class _ScraplingRenderedResponse:
+    def __init__(self, text):
+        self.text = text
+
+
+def test_seatgeek_parser_normalizes_scrapling_json_without_losing_metadata():
+    inventory = json.loads(fixture_body())
+
+    listings, count, complete = SeatGeekAdapter().parse_inventory(
+        _ScraplingJsonResponse(
+            {"data": inventory, "pagination": {"has_next": True}}
+        ),
+        "demo-dodgers-001",
+    )
+    expected, expected_count, _ = SeatGeekAdapter().parse_inventory(
+        fixture_body(), "demo-dodgers-001"
+    )
+
+    assert listings == expected
+    assert count == expected_count
+    assert complete is False
+
+
+def test_seatgeek_parser_normalizes_scrapling_rendered_response():
+    inventory = json.loads(fixture_body())
+    html = (
+        "<html><script type=\"application/json\">"
+        + json.dumps({"props": {"pageProps": {"inventory": inventory}}})
+        + "</script></html>"
+    )
+
+    listings, count, complete = SeatGeekAdapter().parse_inventory(
+        _ScraplingRenderedResponse(html), "demo-dodgers-001"
+    )
+
+    assert count == 3
+    assert complete is True
+    assert listings[0]["source_listing_id"] == "demo-dodgers-good"
+
+
 @pytest.mark.asyncio
 async def test_live_collection_uses_stored_source_event_url(seed_event_and_rule, monkeypatch):
     event_url = "https://seatgeek.com/los-angeles-dodgers-tickets/example-real-event"
@@ -152,6 +200,48 @@ async def test_failed_collection_marks_poll_run_failed_and_keeps_existing_rows(m
     try:
         assert session.get(PollRun, run_id).status == "failed"
         assert session.query(ListingCurrent).count() == 3
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize(
+    "raw_body",
+    ["", {}, {"listings": []}, {"message": "not inventory"}],
+)
+@pytest.mark.asyncio
+async def test_invalid_scrapling_responses_fail_before_persistence(
+    seed_event_and_rule, raw_body
+):
+    seed_event_and_rule(source_event_id="invalid-scrapling")
+
+    with pytest.raises(RuntimeError, match="SeatGeek listing collection failed"):
+        await collect_event_listings(
+            "seatgeek", "invalid-scrapling", tier=2, raw_body=raw_body
+        )
+
+    session = SessionLocal()
+    try:
+        assert session.query(ListingCurrent).count() == 0
+    finally:
+        session.close()
+
+
+@pytest.mark.asyncio
+async def test_incomplete_scrapling_inventory_does_not_persist_valid_prefix(
+    seed_event_and_rule,
+):
+    seed_event_and_rule(source_event_id="incomplete-scrapling")
+    inventory = json.loads(fixture_body())
+    inventory["listings"][1].pop("id")
+
+    with pytest.raises(RuntimeError, match="without an id"):
+        await collect_event_listings(
+            "seatgeek", "incomplete-scrapling", tier=2, raw_body=inventory
+        )
+
+    session = SessionLocal()
+    try:
+        assert session.query(ListingCurrent).count() == 0
     finally:
         session.close()
 

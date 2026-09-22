@@ -56,7 +56,7 @@ async def collect_event_listings(
     source: str,
     source_event_id: str,
     tier: int,
-    raw_body: str | None = None,
+    raw_body: Any | None = None,
     run_id: int | None = None,
 ) -> Dict[str, Any]:
     if source != "seatgeek":
@@ -70,7 +70,12 @@ async def collect_event_listings(
         if body is None:
             body = await _fetch_live_argus_payload(source_event_id)
 
-        listings, inventory_count, pagination_complete = SeatGeekAdapter().parse_inventory(body, source_event_id)
+        try:
+            listings, inventory_count, pagination_complete = SeatGeekAdapter().parse_inventory(
+                body, source_event_id
+            )
+        except Exception as exc:
+            raise RuntimeError(f"SeatGeek listing collection failed: {exc}") from exc
         summary = await upsert_listings(source, source_event_id, listings, run_id or 0)
         summary.update(
             {

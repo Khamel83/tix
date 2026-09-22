@@ -1,17 +1,66 @@
-import json
 import hashlib
+import json
 import re
-from typing import List, Dict, Any, Tuple
+from collections.abc import Mapping
+from typing import Any, Dict, List, Tuple, cast
+
 from ticket_sniper.sources.base import BaseSourceAdapter
 
 ADAPTER_VERSION = "seatgeek-listings-v1"
 PARSER_VERSION = "seatgeek-fixture-v1"
 _SCRIPT_RE = re.compile(r"<script\b[^>]*>(.*?)</script\s*>", re.IGNORECASE | re.DOTALL)
+_MISSING = object()
+
+
+def _json_text(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("SeatGeek response JSON is not serializable") from exc
+
+
+def normalize_scrapling_response(response: Any) -> str:
+    """Convert Scrapling JSON or rendered responses to adapter input text."""
+    if response is None:
+        raise ValueError("SeatGeek response is empty")
+    if isinstance(response, (str, bytes)):
+        body = _json_text(response)
+        if not body.strip():
+            raise ValueError("SeatGeek response is empty")
+        return body
+    if isinstance(response, Mapping):
+        if "listings" in response:
+            return _json_text(response)
+        for key in ("body", "text", "content", "page_source"):
+            if key in response:
+                return normalize_scrapling_response(response[key])
+        return _json_text(response)
+
+    json_value = getattr(response, "json", _MISSING)
+    if json_value is not _MISSING:
+        try:
+            payload = json_value() if callable(json_value) else json_value
+        except (TypeError, ValueError):
+            payload = _MISSING
+        if payload is not _MISSING and payload is not None:
+            return normalize_scrapling_response(payload)
+
+    for key in ("text", "body", "content", "page_source"):
+        value = getattr(response, key, _MISSING)
+        if value is not _MISSING and value is not None:
+            return normalize_scrapling_response(value)
+    raise ValueError("Unsupported SeatGeek response type")
 
 
 def _amount(value: Dict[str, Any] | None) -> float | None:
-    if not value:
+    if value is None:
         return None
+    if not isinstance(value, Mapping):
+        raise ValueError("SeatGeek response contains malformed price data")
     amount = value.get("amount")
     return float(amount) if amount is not None else None
 
@@ -49,16 +98,56 @@ def _find_listing_data(payload: Any) -> Dict[str, Any] | None:
     return None
 
 
+def _pagination_complete(data: Dict[str, Any]) -> bool:
+    if "pagination_complete" in data:
+        return bool(data["pagination_complete"])
+    pagination = data.get("pagination")
+    if isinstance(pagination, Mapping):
+        if "complete" in pagination:
+            return bool(pagination["complete"])
+        if "has_next" in pagination:
+            return not bool(pagination["has_next"])
+        if "next" in pagination:
+            return not bool(pagination["next"])
+    return True
+
+
+def _inventory_data(raw_body: Any) -> Dict[str, Any]:
+    body = normalize_scrapling_response(raw_body)
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        data = _listing_data_from_scripts(body)
+    if not isinstance(data, dict):
+        raise ValueError("SeatGeek response is not an inventory object")
+    if "listings" not in data:
+        nested = _find_listing_data(data)
+        if nested is not None:
+            if "pagination_complete" in data and "pagination_complete" not in nested:
+                nested = {**nested, "pagination_complete": data["pagination_complete"]}
+            elif "pagination" in data and "pagination" not in nested:
+                nested = {**nested, "pagination": data["pagination"]}
+            data = nested
+        else:
+            raise ValueError("SeatGeek response contains no inventory listings")
+    listings = data["listings"]
+    if not isinstance(listings, list) or not listings:
+        raise ValueError("SeatGeek response contains no inventory listings")
+    if any(not isinstance(item, dict) for item in listings):
+        raise ValueError("SeatGeek response contains malformed inventory listings")
+    if any(not item.get("id") for item in listings):
+        raise ValueError("SeatGeek response contains listings without an id")
+    return data
+
+
 class SeatGeekAdapter(BaseSourceAdapter):
     @property
-    def source_name(self) -> str: return "seatgeek"
+    def source_name(self) -> str:
+        return "seatgeek"
 
-    def parse_inventory(self, raw_body: str, source_event_id: str) -> Tuple[List[Dict[str, Any]], int, bool]:
-        try:
-            data = json.loads(raw_body)
-        except json.JSONDecodeError:
-            data = _listing_data_from_scripts(raw_body)
-        listings = data.get("listings", [])
+    def parse_inventory(self, raw_body: Any, source_event_id: str) -> Tuple[List[Dict[str, Any]], int, bool]:
+        data = _inventory_data(raw_body)
+        listings = cast(List[Dict[str, Any]], data["listings"])
         parsed = []
         for item in listings:
             all_in = _amount(item.get("price_with_fees"))
@@ -83,4 +172,4 @@ class SeatGeekAdapter(BaseSourceAdapter):
                 "adapter_version": ADAPTER_VERSION,
                 "parser_version": PARSER_VERSION,
             })
-        return parsed, len(parsed), True
+        return parsed, len(parsed), _pagination_complete(data)
