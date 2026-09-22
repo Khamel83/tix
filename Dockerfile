@@ -8,6 +8,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends     build-essen
 
 COPY pyproject.toml .
 RUN pip install --no-cache-dir -e .
+ARG TIX_INSTALL_SCRAPLING=0
+RUN if [ "$TIX_INSTALL_SCRAPLING" = "1" ]; then \
+      pip install --no-cache-dir "scrapling[fetchers]>=0.4.15" && \
+      python -m playwright install --with-deps chromium; \
+    fi
 
 COPY . .
 RUN mkdir -p /data/backups /data/captures

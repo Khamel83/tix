@@ -29,6 +29,62 @@ See [CONTEXT.md](CONTEXT.md) for domain language and [docs/AUDIT.md](docs/AUDIT.
 2. Run `docker-compose up -d --build`.
 3. Check health at `http://localhost:8000/health` or access the UI at `http://localhost:8000`.
 
+## Optional Scrapling browser collection
+
+Argus remains the default listing fetcher. Scrapling is disabled by default, so
+the normal configuration does not launch a browser and preserves the existing
+Argus request and fallback behavior.
+
+### Installing browser dependencies
+
+For local development on a supported Python 3.11+ environment, install the
+optional fetcher and its Chromium dependencies:
+
+```bash
+python3.11 -m pip install -e ".[dev,scrapling]"
+python3.11 -m playwright install --with-deps chromium
+```
+
+For the container image, install the optional fetcher and browser at build time
+by setting the build argument:
+
+```bash
+TIX_INSTALL_SCRAPLING=1 SCRAPLING_ENABLED=1 SCRAPLING_SOURCE=scrapling \
+  docker compose up -d --build
+```
+
+The default build leaves Scrapling and its browser out of the image. The build
+argument only installs the runtime; `SCRAPLING_ENABLED=1` and
+`SCRAPLING_SOURCE=scrapling` are still required before a browser can be used.
+
+### Scrapling settings
+
+All settings are environment variables. Values outside the stated range, or a
+source other than `argus` or `scrapling`, fail configuration construction with
+an actionable Pydantic validation error that stops application startup. Boolean
+settings accept `0` or `1`, matching the rest of `.env.example`.
+
+| Name | Default | Valid values |
+| --- | --- | --- |
+| `SCRAPLING_ENABLED` | `0` (`false`) | `0` or `1` |
+| `SCRAPLING_SOURCE` | `argus` | `argus`, `scrapling` |
+| `SCRAPLING_HEADLESS` | `1` (`true`) | `0` or `1` |
+| `SCRAPLING_TIMEOUT_SECONDS` | `30` | Integer `1`–`300` |
+| `SCRAPLING_RATE_LIMIT_PER_MINUTE` | `30` | Integer `1`–`600` |
+| `SCRAPLING_REQUEST_DELAY_SECONDS` | `1.0` | Number `0`–`3600` |
+| `SCRAPLING_SESSION_LIFETIME_SECONDS` | `900` | Integer `1`–`86400` |
+
+`SCRAPLING_RATE_LIMIT_PER_MINUTE` caps requests and
+`SCRAPLING_REQUEST_DELAY_SECONDS` spaces them out; configure both
+conservatively for the target site. `SCRAPLING_SESSION_LIFETIME_SECONDS`
+limits reuse of a browser session during collection.
+
+Scrapling's stealth features do not guarantee that anti-bot defenses will be
+bypassed. Follow each target site's terms of service, robots and access
+requirements, and published rate limits. Argus remains the unchanged default;
+Scrapling does not remove the established Argus fallback/error behavior, and
+production collection never silently uses static test fixtures.
+
 ## Local Prototype
 
 The prototype loop can run without live Argus or Telegram credentials:
