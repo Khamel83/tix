@@ -16,4 +16,7 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install ".[dev]"
-      - run: python -m pytest
+      - name: Run focused behavioral suites
+        run: python -m pytest tests/test_event_polling.py tests/test_gate_evaluator.py tests/test_rule_evaluator.py tests/test_listing_collection.py tests/test_alert_pipeline.py tests/test_notifications.py tests/test_deadman.py
+      - name: Run full repository suite
+        run: python -m pytest
