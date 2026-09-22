@@ -29,6 +29,18 @@ See [CONTEXT.md](CONTEXT.md) for domain language and [docs/AUDIT.md](docs/AUDIT.
 2. Run `docker-compose up -d --build`.
 3. Check health at `http://localhost:8000/health` or access the UI at `http://localhost:8000`.
 
+## Apple Container Development Smoke Test
+
+On a supported Apple-silicon macOS host with the Apple Container CLI installed, run:
+
+```bash
+./scripts/smoke-test-apple-container.sh
+```
+
+The command builds and starts the local image through `scripts/apple-container.sh`, mounts an isolated temporary `/data` directory, waits for `http://127.0.0.1:8000/health`, requests the dashboard, and removes the test container and temporary data on success or failure. It is intentionally separate from the unattended Docker Compose deployment.
+
+The smoke test uses the `container` CLI by default. Set `CONTAINER_CLI` only when the Apple Container executable is installed under a different name.
+
 ## Local Prototype
 
 The prototype loop can run without live Argus or Telegram credentials:
