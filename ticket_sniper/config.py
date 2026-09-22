@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     TELEGRAM_CHAT_ID: str = Field("", env="TELEGRAM_CHAT_ID")
     ARGUS_BASE_URL: str = Field("", env="ARGUS_BASE_URL")
     ARGUS_API_KEY: str = Field("", env="ARGUS_API_KEY")
+    LISTING_COLLECTION_SOURCE: str = Field("argus", env="LISTING_COLLECTION_SOURCE")
+    SCRAPLING_FALLBACK_SOURCE: str = Field("error", env="SCRAPLING_FALLBACK_SOURCE")
     TZ_DISPLAY: str = Field("America/Los_Angeles", env="TZ_DISPLAY")
     
     TIER2_MAX_REQUESTS_PER_DAY: int = Field(600, env="TIER2_MAX_REQUESTS_PER_DAY")

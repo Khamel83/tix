@@ -1,3 +1,5 @@
+import asyncio
+import inspect
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -21,15 +23,22 @@ def _fixture_path(source_event_id: str) -> Path | None:
     return Path(__file__).resolve().parents[2] / "tests" / "fixtures" / name
 
 
-async def _fetch_live_argus_payload(source_event_id: str) -> str:
-    def _event_url(session):
+async def _event_url(source_event_id: str) -> str:
+    def _load(session):
         event = session.get(SourceEvent, ("seatgeek", source_event_id))
         if event is None or not event.event_url:
             raise RuntimeError(f"No stored event URL for SeatGeek event {source_event_id}")
         return event.event_url
 
-    event_url = await run_db_transaction(_event_url)
-    response = await ArgusClient().fetch_raw(
+    return await run_db_transaction(_load)
+
+
+async def _fetch_live_argus_payload(
+    source_event_id: str,
+    client: ArgusClient | None = None,
+) -> str:
+    event_url = await _event_url(source_event_id)
+    response = await (client if client is not None else ArgusClient()).fetch_raw(
         FetchRawRequest(
             url=event_url,
             render="browser",
@@ -52,23 +61,127 @@ async def _fetch_live_argus_payload(source_event_id: str) -> str:
     return response.body
 
 
+def _scrapling_body(response: Any) -> str:
+    if isinstance(response, bytes):
+        return response.decode("utf-8")
+    if isinstance(response, str):
+        return response
+    for attribute in ("body", "text"):
+        body = getattr(response, attribute, None)
+        if callable(body):
+            body = body()
+        if isinstance(body, bytes):
+            body = body.decode("utf-8")
+        if isinstance(body, str):
+            return body
+    raise RuntimeError("Scrapling listing collection failed: response has no raw body")
+
+
+class ScraplingClient:
+    """Small async boundary around Scrapling's synchronous in-process fetcher."""
+
+    async def fetch_raw(self, url: str) -> str:
+        try:
+            from scrapling.fetchers import StealthyFetcher
+        except ImportError as exc:
+            raise RuntimeError("Scrapling listing collection is not installed") from exc
+
+        response = await asyncio.to_thread(
+            StealthyFetcher.fetch,
+            url,
+            headless=True,
+            network_idle=True,
+        )
+        body = _scrapling_body(response)
+        if not body:
+            raise RuntimeError("Scrapling listing collection failed: empty response body")
+        return body
+
+
+async def _fetch_live_scrapling_payload(
+    source_event_id: str,
+    client: Any | None = None,
+) -> str:
+    event_url = await _event_url(source_event_id)
+    fetcher = client if client is not None else ScraplingClient()
+    fetch_method = (
+        getattr(fetcher, "fetch_raw", None)
+        or getattr(fetcher, "fetch", None)
+        or getattr(fetcher, "get", None)
+    )
+    if fetch_method is None and callable(fetcher):
+        fetch_method = fetcher
+    if fetch_method is None:
+        raise TypeError(
+            "Scrapling client must provide fetch_raw(url), fetch(url), or get(url)"
+        )
+
+    result = fetch_method(event_url)
+    if inspect.isawaitable(result):
+        result = await result
+    body = _scrapling_body(result)
+    if not body:
+        raise RuntimeError("Scrapling listing collection failed: empty response body")
+    return body
+
+
+def _scrapling_fallback_enabled() -> bool:
+    fallback = settings.SCRAPLING_FALLBACK_SOURCE.strip().lower()
+    if fallback not in {"argus", "error"}:
+        raise ValueError(
+            "SCRAPLING_FALLBACK_SOURCE must be either 'argus' or 'error'"
+        )
+    return fallback == "argus"
+
+
 async def collect_event_listings(
     source: str,
     source_event_id: str,
     tier: int,
     raw_body: str | None = None,
     run_id: int | None = None,
+    scrapling_client: Any | None = None,
+    argus_client: ArgusClient | None = None,
 ) -> Dict[str, Any]:
+    """Collect listings using the configured source and persist normalized rows.
+
+    An injected raw body always wins. Otherwise ``argus`` preserves the existing
+    fixture/live behavior. ``scrapling`` always fetches live data; on fetch
+    failure it either calls Argus when ``SCRAPLING_FALLBACK_SOURCE=argus`` or
+    re-raises the Scrapling error when the setting is ``error``.
+    """
     if source != "seatgeek":
         raise ValueError(f"Unsupported listing source: {source}")
     try:
         body = raw_body
-        fixture = _fixture_path(source_event_id)
-        if body is None and (settings.TIX_PROTOTYPE_MODE or fixture):
-            if fixture and fixture.exists():
-                body = fixture.read_text()
-        if body is None:
-            body = await _fetch_live_argus_payload(source_event_id)
+        configured_source = settings.LISTING_COLLECTION_SOURCE.strip().lower()
+        if configured_source not in {"argus", "scrapling"}:
+            raise ValueError(
+                "LISTING_COLLECTION_SOURCE must be either 'argus' or 'scrapling'"
+            )
+
+        async def fetch_argus_body() -> str:
+            if argus_client is None:
+                return await _fetch_live_argus_payload(source_event_id)
+            return await _fetch_live_argus_payload(source_event_id, argus_client)
+
+        if body is None and configured_source == "argus":
+            fixture = _fixture_path(source_event_id)
+            if settings.TIX_PROTOTYPE_MODE or fixture:
+                if fixture and fixture.exists():
+                    body = fixture.read_text()
+            if body is None:
+                body = await fetch_argus_body()
+        elif body is None:
+            try:
+                if scrapling_client is None:
+                    body = await _fetch_live_scrapling_payload(source_event_id)
+                else:
+                    body = await _fetch_live_scrapling_payload(source_event_id, scrapling_client)
+            except Exception:
+                if not _scrapling_fallback_enabled():
+                    raise
+                body = await fetch_argus_body()
 
         listings, inventory_count, pagination_complete = SeatGeekAdapter().parse_inventory(body, source_event_id)
         summary = await upsert_listings(source, source_event_id, listings, run_id or 0)
@@ -92,7 +205,6 @@ async def collect_event_listings(
 
             await run_db_transaction(_fail)
         raise
-
 
 async def upsert_listings(
     source: str,

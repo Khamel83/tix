@@ -2,10 +2,10 @@ import json
 
 import pytest
 
-from ticket_sniper.argus.client import ArgusClient
 from ticket_sniper.argus.models import FetchRawResponse
 from ticket_sniper.db.models import ListingCurrent, ListingPriceHistory, PollRun, SourceEvent
 from ticket_sniper.db.session import SessionLocal, run_db_transaction
+from ticket_sniper.config import settings
 from ticket_sniper.listings.collector import collect_event_listings, upsert_listings
 from ticket_sniper.sources.seatgeek import SeatGeekAdapter
 
@@ -71,13 +71,16 @@ async def test_live_collection_uses_stored_source_event_url(seed_event_and_rule,
     await run_db_transaction(update_event_url)
     captured = {}
 
-    async def fake_fetch_raw(self, request):
-        captured["request"] = request
-        return FetchRawResponse(status="ok", body=fixture_body())
+    class FakeArgusClient:
+        async def fetch_raw(self, request):
+            captured["request"] = request
+            return FetchRawResponse(status="ok", body=fixture_body())
 
-    monkeypatch.setattr(ArgusClient, "fetch_raw", fake_fetch_raw)
+    monkeypatch.setattr(settings, "LISTING_COLLECTION_SOURCE", "argus")
 
-    summary = await collect_event_listings("seatgeek", "real-event", tier=2)
+    summary = await collect_event_listings(
+        "seatgeek", "real-event", tier=2, argus_client=FakeArgusClient()
+    )
 
     assert summary["status"] == "success"
     assert captured["request"].url == event_url
@@ -91,21 +94,137 @@ async def test_live_collection_preserves_argus_error_and_http_status(
 ):
     seed_event_and_rule(source_event_id="real-error", venue_name="Error Venue")
 
-    async def fake_fetch_raw(self, request):
-        return FetchRawResponse(
-            status="error",
-            http_status=503,
-            error="managed browser unavailable",
-        )
+    class FakeArgusClient:
+        async def fetch_raw(self, request):
+            return FetchRawResponse(
+                status="error",
+                http_status=503,
+                error="managed browser unavailable",
+            )
 
-    monkeypatch.setattr(ArgusClient, "fetch_raw", fake_fetch_raw)
+    monkeypatch.setattr(settings, "LISTING_COLLECTION_SOURCE", "argus")
 
     with pytest.raises(RuntimeError) as failure:
-        await collect_event_listings("seatgeek", "real-error", tier=2)
+        await collect_event_listings(
+            "seatgeek",
+            "real-error",
+            tier=2,
+            argus_client=FakeArgusClient(),
+        )
 
     assert str(failure.value) == (
         "Argus listing collection failed (http_status=503): managed browser unavailable"
     )
+
+
+@pytest.mark.asyncio
+async def test_scrapling_collection_hands_raw_payload_to_adapter_and_upserts(
+    seed_event_and_rule, monkeypatch
+):
+    event_url = "https://seatgeek.com/example/scrapling-event"
+    seed_event_and_rule(source_event_id="scrapling-event")
+
+    def update_event_url(session):
+        session.get(SourceEvent, ("seatgeek", "scrapling-event")).event_url = event_url
+
+    await run_db_transaction(update_event_url)
+    monkeypatch.setattr(settings, "LISTING_COLLECTION_SOURCE", "scrapling")
+    captured = {}
+
+    class FakeScraplingResponse:
+        body = fixture_body().encode("utf-8")
+        text = "not the raw SeatGeek payload"
+
+    class FakeScraplingClient:
+        async def fetch_raw(self, url):
+            captured["url"] = url
+            return FakeScraplingResponse()
+
+    summary = await collect_event_listings(
+        "seatgeek",
+        "scrapling-event",
+        tier=2,
+        scrapling_client=FakeScraplingClient(),
+    )
+
+    session = SessionLocal()
+    try:
+        assert captured["url"] == event_url
+        assert summary["status"] == "success"
+        assert summary["listings_seen"] == 3
+        assert session.query(ListingCurrent).count() == 3
+        assert session.get(ListingCurrent, ("seatgeek", "demo-dodgers-good")) is not None
+    finally:
+        session.close()
+
+
+@pytest.mark.asyncio
+async def test_scrapling_failure_uses_configured_argus_fallback(
+    seed_event_and_rule, monkeypatch
+):
+    seed_event_and_rule(source_event_id="scrapling-fallback")
+    monkeypatch.setattr(settings, "LISTING_COLLECTION_SOURCE", "scrapling")
+    monkeypatch.setattr(settings, "SCRAPLING_FALLBACK_SOURCE", "argus")
+    captured = {}
+
+    class FailingScraplingClient:
+        async def fetch_raw(self, url):
+            raise RuntimeError("scrapling unavailable")
+
+    class FakeArgusClient:
+        async def fetch_raw(self, request):
+            captured["argus_url"] = request.url
+            return FetchRawResponse(status="ok", body=fixture_body())
+
+    summary = await collect_event_listings(
+        "seatgeek",
+        "scrapling-fallback",
+        tier=2,
+        scrapling_client=FailingScraplingClient(),
+        argus_client=FakeArgusClient(),
+    )
+
+    session = SessionLocal()
+    try:
+        assert captured["argus_url"] == "https://example.test/events/scrapling-fallback"
+        assert summary["status"] == "success"
+        assert session.query(ListingCurrent).count() == 3
+    finally:
+        session.close()
+
+
+@pytest.mark.asyncio
+async def test_scrapling_failure_does_not_load_fixture_when_fallback_is_error(
+    seed_event_and_rule, monkeypatch
+):
+    seed_event_and_rule(source_event_id="demo-dodgers-001")
+    monkeypatch.setattr(settings, "LISTING_COLLECTION_SOURCE", "scrapling")
+    monkeypatch.setattr(settings, "SCRAPLING_FALLBACK_SOURCE", "error")
+
+    class FailingScraplingClient:
+        async def fetch_raw(self, url):
+            raise RuntimeError("scrapling unavailable")
+    def fail_fixture(source_event_id):
+        raise AssertionError("live Scrapling collection loaded a fixture")
+
+    monkeypatch.setattr(
+        "ticket_sniper.listings.collector._fixture_path",
+        fail_fixture,
+    )
+
+    with pytest.raises(RuntimeError, match="scrapling unavailable"):
+        await collect_event_listings(
+            "seatgeek",
+            "demo-dodgers-001",
+            tier=2,
+            scrapling_client=FailingScraplingClient(),
+        )
+
+    session = SessionLocal()
+    try:
+        assert session.query(ListingCurrent).count() == 0
+    finally:
+        session.close()
 
 
 @pytest.mark.asyncio

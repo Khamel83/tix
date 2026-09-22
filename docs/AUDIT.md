@@ -27,9 +27,9 @@ The repository is a local prototype. The core loop works against deterministic d
 - Bounded SeatGeek event pagination for scheduled discovery.
 - Dynamic event polling with cadence tiers.
 - Scheduler jobs for outbox draining, deadman checks, SeatGeek target sports discovery, and dynamic event poll reconciliation.
-- Argus client wrapper for `/api/fetch-raw`.
+- Argus client wrapper for `/api/fetch-raw` and an explicitly configured in-process Scrapling fetcher for live listing collection.
 - SeatGeek listing parser for fixture-compatible listing payloads.
-- Fixture-backed prototype listing collection for `demo-dodgers-001` and `demo-hollywoodbowl-001`.
+- Fixture-backed prototype listing collection for `demo-dodgers-001` and `demo-hollywoodbowl-001` when the default Argus source is used.
 - Current listing upsert and price history persistence.
 - Gate evaluation from event price snapshots to listing collection.
 - Fee estimator skeleton.
@@ -45,7 +45,7 @@ The repository is a local prototype. The core loop works against deterministic d
 
 ## Partial Or Missing
 
-- Live listing collection URL details remain behind the Argus adapter and intentionally fail closed when no fixture fallback applies.
+- Live listing collection supports Argus by default or Scrapling when configured with `LISTING_COLLECTION_SOURCE=scrapling`; Scrapling failures fail closed by default and may use Argus only when `SCRAPLING_FALLBACK_SOURCE=argus`.
 - Fee estimation remains a skeleton and is not yet used to infer all-in prices for sources that only provide listed prices.
 - The prototype profile is visible in the dashboard but not editable there yet.
 - The prototype rules are seeded locally; there is not yet a dashboard editor for rules or section aliases.
